@@ -1,0 +1,95 @@
+{
+  ###1.基本设置####
+  setwd("D:/D/data/xuhuibusiness/")
+  library(data.table)
+  library(dplyr)
+  library(ggplot2)
+  library(tidyverse)
+}
+
+{##2.数据读入-接DA908####
+  dt2016<-fread("data2016_sku.csv",header = T,sep=",")
+  gc()
+  dt2016
+  dt2016 <- arrange(dt2016, saledate, saletime)
+  gc()
+  dt2016 <- as.data.table(dt2016)
+  gc()
+}
+
+{#3.销售关键值的负值与零值处理####
+  #qty-price-amt-posdiscountamt-vipdiscountamt-discountoutamt-discountinamt
+  #summary(dt2016)
+  #tips：surrogatemode变量可以删除，因为全部是0
+  #gc()
+  dt2016
+  {#负值转正值
+    w1 <- which(dt2016$qty<0)#47535
+    w2 <- which(dt2016$amt<0)#47604
+    w3 <- which(dt2016$posdiscountamt<0)#2168
+    w4 <- which(dt2016$vipdiscountamt<0)#352
+    w5 <- which(dt2016$discountoutamt<0)#897
+    w6 <- which(dt2016$discountinamt<0)#519
+    dt2016[w1,]$qty<- -dt2016[w1,]$qty
+    gc()
+    dt2016[w2,]$amt<- -dt2016[w2,]$amt
+    gc()
+    dt2016[w3,]$posdiscountamt<- -dt2016[w3,]$posdiscountamt
+    gc()
+    dt2016[w4,]$vipdiscountamt<- -dt2016[w4,]$vipdiscountamt
+    gc()
+    dt2016[w5,]$discountoutamt<- -dt2016[w5,]$discountoutamt
+    gc()
+    dt2016[w6,]$discountinamt<- -dt2016[w6,]$discountinamt
+    gc()
+  }
+  
+  {#price==0的处理
+    w<-which(dt2016$price==0)#万分之4可以删除
+    dt2016<-dt2016[-w,]
+    gc()
+    
+    
+  }
+  #5块钱以内的误差认为可接受范围内；删除其他的
+  cond <- near(dt2016$amt,dt2016$qty*dt2016$price-dt2016$posdiscountamt-dt2016$vipdiscountamt-dt2016$discountoutamt-dt2016$discountinamt-dt2016$merchantdiscountamt,5)
+  table(cond)#2.4%,可以删除
+  gc()
+  dt2016<-dt2016[cond,]
+  gc()
+}
+
+{#4.品类选择(按照论文中来)####
+  #选择哪些品类呢？如果考虑促销的研究，那应该选促销多且促销力度大的那些品类
+  dt2016
+  {#4.1相对原价的促销力度####
+  disct<-dt2016[,mean((price-amt/qty)/price),by=c("retailtypename")]
+  disct<-disct[order(V1,decreasing = T),]
+  disct#快消品排在40位左右
+  }
+  
+  {#4.2每个品类的促销间隔#####
+    #interval=total days / total promotion days
+    pro_itv<-dt2016[,mean((price-amt/qty)/price),by=c("retailtypename","saledate")]
+    pro_itv<-pro_itv[order(retailtypename,saledate),]
+    pro_itv
+    eql_0<-function(data){length(which(data>0))}
+    df<-pro_itv[,eql_0(V1),by="retailtypename"]
+    df
+    setnames(df,c("retailtypename","pro_days"))
+    x<-as.data.frame(table(pro_itv$retailtypename))
+    x
+    w<-which(x$Freq<100)
+    x<-x[-w,]
+    setnames(x,c("retailtypename","total_days"))
+    df<-left_join(df,x,by="retailtypename")
+    df
+    df$interval<-df$total_days/df$pro_days
+    df<-as.data.table(df)
+    df<-df[order(interval,decreasing = T),]
+    df
+  }
+  
+  
+  
+}
