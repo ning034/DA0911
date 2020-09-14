@@ -1,0 +1,68 @@
+{
+  ###1.基本设置####
+  setwd("D:/D/data/xuhuibusiness/")
+  library(data.table)
+  library(dplyr)
+  library(ggplot2)
+  library(tidyverse)
+}
+
+{
+  dt2016<-fread("data2016_price.csv",header = T,sep=",")#10186302
+  gc()
+  dt2016
+  vb <-
+    fread(
+      "variable_code.csv",
+      header = T,
+      sep = ",",
+      encoding = "UTF-8"
+    )
+  vb
+}
+
+{#品类选择原则:快消品-看销售分类#######
+  length(unique(dt2016$retailtypename))
+  length(unique(dt2016$itemtypename))
+  unique(dt2016$retailtypename)
+  quantile(dt2016$qty,0.99)#7
+  w<-which(dt2016$qty>=7)#102180
+  dt2016<-dt2016[qty<7,]
+  gc()
+  qty<-dt2016[,sum(qty),by="retailtypename"]
+  qty<-qty[order(V1,decreasing = T),]
+  qty
+  sum(qty$V1[1:25])/sum(qty$V1)#占81.995%销量
+  #对特殊销售分类（不明白是什么的品类）：业务专用进行观察;推测属于服装、鞋子类，但是信息不够，itemname中也只是品牌名；
+  
+  #决定不分析该品类
+  x<-subset(dt2016,retailtypename=="业务专用")
+  length(unique(x$itemtypename))
+  unique(x$itemtypename)
+  length(unique(x$unit))
+  unique(x$unit)
+  x<-subset(dt2016,retailtypename=="其它类")#点心,可保留
+  x
+  qty
+  x<-subset(dt2016,retailtypename=="其它加工食品")#小零食,可保留
+  x
+  #最终选择的品类(24种)####
+  categories<-qty$retailtypename[c(1:2,4:25)]
+  categories
+  #包括了快消品和服装鞋帽类等；
+}
+
+{#最终选择的数据#########
+  cond <- which(dt2016$retailtypename %in% categories)
+  data_category <- dt2016[cond, ]
+  rm(x)
+  rm(dt2016)
+  gc()
+  {#基本观察
+    data_category
+    length(unique(data_category$retailtypename))#24个品类
+    length(unique(data_category$brandname))#2104个品牌
+    length(unique(data_category$barcode))#166604个sku
+    write.csv(data_category, file = "D:/D/data/xuhuibusiness/data_category.csv", row.names = F)
+  }
+}
