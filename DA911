@@ -57,6 +57,7 @@
   gc()
   dt2016<-dt2016[cond,]
   gc()
+  write.csv(dt2016, file = "D:/D/data/xuhuibusiness/data2016_price.csv", row.names = F)
 }
 
 {#4.品类选择(按照论文中来)####
@@ -66,6 +67,7 @@
   disct<-dt2016[,mean((price-amt/qty)/price),by=c("retailtypename")]
   disct<-disct[order(V1,decreasing = T),]
   disct#快消品排在40位左右
+  write.csv()
   }
   
   {#4.2每个品类的促销间隔#####
@@ -86,7 +88,7 @@
     df
     df$interval<-df$total_days/df$pro_days
     df<-as.data.table(df)
-    df<-df[order(interval,decreasing = T),]
+    df<-df[order(interval,decreasing = F),]
     df
   }
   
