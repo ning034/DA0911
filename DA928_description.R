@@ -7,10 +7,14 @@
   library(tidyverse)
   library(lubridate)
   library(ggplot2)
-  df <- fread ("data_category.csv", header = T, sep=",")
+  dfs <- fread ("data_category.csv", header = T, sep=",")
   gc()
-  #dfs <- df
-  #df <- subset(dfs, price<quantile(dfs$price,0.8))##验证红雨的结果
+  {#
+    length(unique(df$barcode))
+    sum(df$amt)
+  }
+  df$quarter <- quarter(df$saledate)
+  df <- subset(dfs, price<quantile(dfs$price,0.80))
 }
 
 {#一般参数模型####
@@ -36,8 +40,62 @@
   lm_data <- left_join(sku_data,distribution,by=c("quarter","barcode"))
   lm_data$sku_distribution2 <- lm_data$sku_distribution ^ 2
   lm_data
+  summary(lm_data$sku_distribution)
   lm1 <- lm(share~sku_distribution+sku_distribution2,data=lm_data)
   summary(lm1)
+  
+  {#数值铺货率
+    tips <- function(data){length(unique(data))}
+    store_num <- df[,c(.(num=tips(storecode))),by=c("barcode","quarter")]
+    store <- df[,c(.(num=tips(storecode))),by=c("quarter")]
+    store_num <- left_join(store_num,store,by="quarter")
+    store_num$distribution_num <-100* store_num$num.x / store_num$num.y
+    store_num
+    summary(store_num$distribution_num)
+    summary(store_num$sku_distribution)
+    #cor
+    store_num <- left_join(store_num,lm_data,by=c("barcode","quarter"))
+    store_num
+    cor(store_num$distribution_num,store_num$sku_distribution)
+  }
+  {#品类基本信息描述
+    head(store_num)
+    cat <- df[,c(.(amt=sum(amt)),.(brand_num=tips(brandname)),.(sku_num=tips(barcode))),by="retailtypename"]
+    cat#1
+    barcode_cat <- df[,c(.(barcode=unique(barcode))),by="retailtypename"]
+    barcode_cat
+    store_num
+    store_num <- left_join(store_num,barcode_cat,by="barcode")
+    store_num <- as.data.table(store_num)
+    acv <- store_num[,c(.(acv_avg=mean(sku_distribution)),.(acv_med=median(sku_distribution)),.(acv_max=max(sku_distribution))),by="retailtypename"]
+    acv#3
+    head(sku_data)
+    sku_data <- left_join(sku_data,barcode_cat,by="barcode")
+    sku_data <- as.data.table(sku_data)
+    ms <- sku_data[,c(.(ms_avg=mean(share)),.(ms_med=median(share)),.(ms_max=max(share))),by="retailtypename"]
+    ms#2
+    smr_information <- left_join(cat,ms,by="retailtypename")
+    smr_information <- left_join(smr_information,acv,by="retailtypename")
+    smr_information <- arrange(smr_information,retailtypename)
+    
+    smr_information
+    max(smr_information$amt)#/10000
+    smr_information$amt <- smr_information$amt / 10000
+    write.csv(smr_information,file = "D:/D/data/xuhuibusiness/smr_information.csv",row.names = F)
+    test <- smr_information
+    test$amt <- round(test$amt,0)
+    test$ms_avg <- round(test$ms_avg,3)
+    test$ms_med <- round(test$ms_med,3)
+    test$ms_max <- round(test$ms_max,3)
+    test$acv_avg <- round(test$acv_avg,2)
+    test$acv_med <- round(test$acv_med,2)
+    test$acv_max <- round(test$acv_max,2)
+    test
+    x <- paste(test$retailtypename,test$amt,test$brand_num,test$sku_num,test$ms_avg,test$ms_med,test$ms_max,test$acv_avg,test$acv_med,test$acv_max,sep="&")
+    x 
+    x <- paste(x,"\\",sep="")
+    write.csv(x,file = "D:/D/data/xuhuibusiness/table_smr_information.csv",row.names = F,quote = F)
+    }
 }
 
 {#确定品类参数模型####
@@ -78,7 +136,7 @@
     result <- rbind(result,result1)
   }
   result 
-  write.csv(result,file="D:/D/data/xuhuibusiness/equation3.csv")
+  write.csv(result,file="D:/D/data/xuhuibusiness/equation3.csv",row.names = F)
 }
 
 {#品类特征模型####
