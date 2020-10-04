@@ -12,10 +12,93 @@
   {#
     length(unique(df$barcode))
     sum(df$amt)
+    length(unique(df$brandname))
   }
   dfs$quarter <- quarter(dfs$saledate)
   df <- subset(dfs, price<quantile(dfs$price,0.80))
+  tips <- function(data){length(unique(data))}
+  x <- df[,tips(barcode),by="retailtypename"]
+  x
+  mean(x$V1)
 }
+
+{#无模型证据-季度####
+  gc()
+  sku_data <- df[,c(.(sku_amt=sum(amt))),by=c("barcode","quarter")]
+  sku_data <- sku_data %>% group_by(quarter) %>% mutate(jidu_amt=sum(sku_amt))
+  sku_data$share <- 100 * sku_data$sku_amt / sku_data$jidu_amt
+  head(sku_data)
+  
+  #计算加权铺货
+  distribution <- df[,c(.(sku_amt=sum(amt)),.(barcode=unique(barcode))),by=c("storecode","quarter")]
+  distribution <- distribution %>% group_by(barcode,quarter) %>%
+    mutate(store_amt=sum(sku_amt))
+  head(distribution)
+  distribution$sku_distribution <- 100 * distribution$store_amt / sum(df$amt)
+  distribution <- distribution %>% select(.,c(quarter,barcode,sku_distribution))
+  distribution <- unique(distribution)
+  distribution
+  
+  #回归数据
+  lm_data <- left_join(sku_data,distribution,by=c("quarter","barcode"))
+  lm_data$sku_distribution2 <- lm_data$sku_distribution ^ 2
+  lm_data
+  barcode <- df[,c(.(barcode=unique(barcode))),by="retailtypename"]
+  lm_data <- left_join(lm_data,barcode,by="barcode")
+  
+  retail_amt <- df[,c(.(amt=sum(amt))),by="retailtypename"]
+  retail_amt <- arrange(retail_amt,desc(amt))
+  retail_amt
+  nm <- retail_amt$retailtypename[1:4]
+  
+  test <- subset(lm_data,retailtypename==nm[4])
+  test
+  ggplot(test,aes(sku_distribution,share))+geom_point()+theme_bw()
+  
+  }
+
+{#无模型证据-年度####
+  gc()
+  sku_data <- df[,c(.(sku_amt=sum(amt))),by=c("barcode")]
+  sku_data$share <- 100 * sku_data$sku_amt / sum(df$amt)
+  head(sku_data)
+  
+  #计算加权铺货
+  distribution <- df[,c(.(sku_amt=sum(amt)),.(barcode=unique(barcode))),by=c("storecode")]
+  distribution <- distribution %>% group_by(barcode) %>%
+    mutate(store_amt=sum(sku_amt))
+  head(distribution)
+  distribution$sku_distribution <- 100 * distribution$store_amt / sum(df$amt)
+  distribution <- distribution %>% select(.,c(barcode,sku_distribution))
+  distribution <- unique(distribution)
+  distribution
+  
+  #回归数据
+  lm_data <- left_join(sku_data,distribution,by=c("barcode"))
+  lm_data$sku_distribution2 <- lm_data$sku_distribution ^ 2
+  lm_data
+  barcode <- df[,c(.(barcode=unique(barcode))),by="retailtypename"]
+  lm_data <- left_join(lm_data,barcode,by="barcode")
+  
+  retail_amt <- df[,c(.(amt=sum(amt))),by="retailtypename"]
+  retail_amt <- arrange(retail_amt,desc(amt))
+  retail_amt
+  nm <- retail_amt$retailtypename[c(1,3,4,5)]
+  nm
+  
+  test <- subset(lm_data,retailtypename==nm[1])
+  test
+  ggplot(test,aes(sku_distribution,share))+geom_point()+theme_bw()
+  for (i in 1:4) {
+    df1 <- subset(lm_data,retailtypename==nm[i])
+    #save the plot
+    png(filename = paste0("type",nm[i],i, ".jpg"),width = 2400,height = 1800,res = 300)
+    print(ggplot(data = df1, aes(x = sku_distribution, y = share)) + geom_point()+theme_bw())
+    dev.off()
+  }
+  
+}
+
 
 {#一般参数模型####
   #计算季度份额
@@ -71,6 +154,7 @@
     head(sku_data)
     sku_data <- left_join(sku_data,barcode_cat,by="barcode")
     sku_data <- as.data.table(sku_data)
+    sku_data
     ms <- sku_data[,c(.(ms_avg=mean(share)),.(ms_med=median(share)),.(ms_max=max(share))),by="retailtypename"]
     ms#2
     smr_information <- left_join(cat,ms,by="retailtypename")
@@ -80,7 +164,24 @@
     smr_information
     max(smr_information$amt)#/10000
     smr_information$amt <- smr_information$amt / 10000
-    write.csv(smr_information,file = "D:/D/data/xuhuibusiness/smr_information.csv",row.names = F)
+    #计算平均ms的倍数
+    mean(smr_information$ms_max / smr_information$ms_avg)
+    mean(smr_information$ms_avg / smr_information$ms_med)
+    
+    #计算平均acv的倍数
+    mean(smr_information$acv_max / smr_information$acv_avg)
+    mean(smr_information$acv_avg / smr_information$acv_med)
+    
+    #看优秀的sku与一般sku
+    lm_data
+    lm_data %>% arrange(.,desc(share))#max 4.2 ms 18.3 distribution 
+    summary(lm_data$share)
+    w <- which(lm_data$share < 0.009)
+    sum(lm_data[w,]$share)
+    
+    
+    
+    qwrite.csv(smr_information,file = "D:/D/data/xuhuibusiness/smr_information.csv",row.names = F)
     test <- smr_information
     test$amt <- round(test$amt,0)
     test$ms_avg <- round(test$ms_avg,3)
@@ -122,6 +223,7 @@
   #lm1 <- lm(share~sku_distribution+sku_distribution2+retailtypename,data=lm_data)#好奇看了一下
   #summary(lm1)
   
+  
   retailtypename <- unique(df$retailtypename)
   retailtypename <- retailtypename[order(retailtypename)]
   retailtypename 
@@ -136,6 +238,11 @@
   }
   result 
   write.csv(result,file="D:/D/data/xuhuibusiness/equation3.csv",row.names = F)
+  
+  {#整体做
+    lm1 <- lm(lm_data$share~lm_data$retailtypename * (lm_data$sku_distribution+lm_data$sku_distribution2))
+    summary(lm1)
+  }
 }
 
 {#品类特征模型-原始####
@@ -402,9 +509,11 @@
     result <- rbind(result,result1)
   }
   result 
-  write.csv(result,file="D:/D/data/xuhuibusiness/equation3.csv",row.names = F)
   
-  #粘贴
+  #存一个表格形式
+  write.csv(result,file="D:/D/data/xuhuibusiness/equation4.csv",row.names = F)
+  
+  #粘贴，存一个latex形式
   test <- result
   test$cat <- paste("cat type:",test$cat,sep="")
   test$main_effect <- round(test$main_effect,5)
@@ -434,8 +543,9 @@
       result <- rbind(result,result1)
     }
     result
+    write.csv(result,file="D:/D/data/xuhuibusiness/equation4_1.csv",row.names = F)
     
-    #粘贴
+    #粘贴，存一个latex形式
     test <- result
     test$size <- as.character(test$size)
     test[1,]$size <- paste("cat size:",test[1,]$size,"(500-5000M)",sep="")
@@ -464,6 +574,16 @@
     summary(lm1)
     result1 <- data.frame(HII="sku_level HHI",main_effect=coef(lm1)[1],t_value=coef(summary(lm1))[,3][1],acv=coef(lm1)[2],t_value=coef(summary(lm1))[,3][2],acv2=coef(lm1)[3],t_value2=coef(summary(lm1))[,3][3],row.names = NULL)
     result1
+    
+    #存一个表格形式
+    write.csv(result1,file="D:/D/data/xuhuibusiness/equation4_2.csv",row.names = F)
+    
+    zz <- df[,c(.(barcode=unique(barcode))),by="retailtypename"]
+    zz <- left_join(lm_data,zz,by="barcode")
+    zz
+    write.csv(zz,file="D:/D/data/xuhuibusiness/lm_data.csv",row.names = F)
+    
+    #存一个latex形式
     test <- result1
     test$HII <- paste("cat competitive:",test$HII)
     test$main_effect <- round(test$main_effect,5)
@@ -484,14 +604,28 @@
   }
   
   {#其他特征3
-    w <- which(lm_data$mprice > 77.18)
+    summary(lm_data$mprice)
+    w <- which(lm_data$mprice > 77.18)#第三分位数
     lm_data$vd <- "low"
     lm_data[w,]$vd <- "high"
     
-    lm1 <- lm(lm_data$share~lm_data$sku_distribution + lm_data$sku_distribution2)
+    #存一个表格形式
+    zz <-subset(lm_data,vd=="high")
+    lm1 <- lm(zz$share~zz$sku_distribution + zz$sku_distribution2)
     summary(lm1)
     result1 <- data.frame(vd="high",main_effect=coef(lm1)[1],t_value=coef(summary(lm1))[,3][1],acv=coef(lm1)[2],t_value=coef(summary(lm1))[,3][2],acv2=coef(lm1)[3],t_value2=coef(summary(lm1))[,3][3],row.names = NULL)
     result1
+    result <- result1
+    zz <-subset(lm_data,vd=="low")
+    lm1 <- lm(zz$share~zz$sku_distribution + zz$sku_distribution2)
+    summary(lm1)
+    result1 <- data.frame(vd="low",main_effect=coef(lm1)[1],t_value=coef(summary(lm1))[,3][1],acv=coef(lm1)[2],t_value=coef(summary(lm1))[,3][2],acv2=coef(lm1)[3],t_value2=coef(summary(lm1))[,3][3],row.names = NULL)
+    result1
+    result <- rbind(result,result1)
+    result
+    write.csv(result,file="D:/D/data/xuhuibusiness/equation4_3.csv",row.names = F)
+    
+    #存一个latex文本形式
     test <- result1
     test$vd <- paste("cat value density:",test$vd)
     test$main_effect <- round(test$main_effect,5)
