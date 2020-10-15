@@ -43,7 +43,7 @@
   distribution
   
   #回归数据
-  lm_data <- left_join(sku_data,distribution,by=c("barcode"))
+  lm_data <- left_join(sku_data,distribution,by=c("barcode","quarter"))
   lm_data$sku_distribution2 <- lm_data$sku_distribution ^ 2
   lm_data
   summary(lm_data$sku_distribution)
@@ -72,7 +72,7 @@
   
   #计算季度份额
   gc()
-  sku_data <- df[,c(.(sku_amt=sum(amt))),by=c("barcode","retailtypename","quarter")]
+  sku_data <- df[,c(.(sku_amt=sum(amt)),.(retailtypename=unique(retailtypename))),by=c("barcode","quarter")]
   sku_data
   sku_data <- sku_data %>% group_by(retailtypename,quarter) %>% mutate(retailamt=sum(sku_amt))
   sku_data
@@ -90,9 +90,24 @@
   distribution
   
   #回归数据
-  lm_data <- left_join(sku_data,distribution,by=c("barcode"))
+  lm_data <- left_join(sku_data,distribution,by=c("barcode","quarter"))
   lm_data$sku_distribution2 <- lm_data$sku_distribution ^ 2
   lm_data
+  
+  {#把四个季度的SKU提取出来
+    lm_data <- lm_data %>% group_by(barcode) %>% mutate(size=length(barcode))
+    lm_data
+    w <- which(lm_data$size <4 )
+    lm_data <- lm_data[-w,]
+    
+    #季度平均
+    lm_data2 <- as.data.table(lm_data)
+    lm_data2 <- lm_data2[,c(.(share=mean(share)),.(sku_distribution=mean(sku_distribution)),retailtypename=unique(retailtypename)),by="barcode"]
+    lm_data2$sku_distribution2 <- lm_data2$sku_distribution ^ 2
+    lm_data2
+    lm_data <- lm_data2
+
+  }
   
   #
   retailtypename <- unique(df$retailtypename)
@@ -123,8 +138,13 @@
       x[, i+1] <- x[, i+1] * y$sku_distribution2
     }
     
+    
     model2 <- lm(lm_data$share~x)
     summary(model2)
+    
+    n <- x[,seq(1,48,by=2)]
+    test <- lm(lm_data$share~n)
+    summary(test)
     #列的命名
     retailtypename
     
@@ -181,12 +201,6 @@
   lm_data$sku_distribution2 <- lm_data$sku_distribution ^ 2
   lm_data
   
-  #回归数据连接品类
-  retail <- df[,c(.(barcode=unique(barcode))),by="retailtypename"]
-  retail
-  lm_data <- left_join(lm_data,retail,by=c("barcode","retailtypename"))
-  lm_data
-  
   #计算品类特征-cat_type；retailtypename 改为 
   #food0 开包即食类(retailtypename[c(1,2,15,16,17,18)])、
   #food1 加工即食类(retailtypename[c(3,9,10,13,23,24)])、
@@ -215,7 +229,7 @@
   #品类特征cat_size
   cat <- df[,c(.(amt=sum(amt))),by="retailtypename"]
   summary(cat$amt)
-  w <- which(cat$amt <= 15947831 & cat$amt > 3709005 )
+  w <- which(cat$amt <= 15000000 & cat$amt > 3709005 )
   cat$size <- "large" 
   cat[w,]$size <- "medium"
   w <- which(cat$amt <= 3709005)
@@ -280,6 +294,7 @@
   y <- as.data.table(y)
   head(y)
   x <- as.matrix(x)#将x转化为矩阵是因为data.table结构的数据，无法用DT[,i]取得列变量
+  mx <- x
   
   j <-seq(1,14,by=2)
   retailtypename <- type
@@ -287,9 +302,12 @@
   for(i in j){
     w <- which(y$type==retailtypename[i])
     x[w , i] <- 1
+    mx[w , i] <- 1
     x[, i+1] <- x[, i]
+    mx[, i+1] <- mx[, i]
     x[, i] <- x[, i] * y$sku_distribution
     x[, i+1] <- x[, i+1] * y$sku_distribution2
+    
   }
   
   lm1 <- lm(lm_data$share~x)
@@ -304,6 +322,7 @@
   y <- as.data.table(y)
   head(y)
   xx <- as.matrix(xx)#将x转化为矩阵是因为data.table结构的数据，无法用DT[,i]取得列变量
+  mxx <- xx
   
   j <-seq(1,6,by=2)
   retailtypename <- size
@@ -311,9 +330,12 @@
   for(i in j){
     w <- which(y$size==retailtypename[i])
     xx[w , i] <- 1
+    mxx[w , i] <- 1
     xx[, i+1] <- xx[, i]
+    mxx[, i+1] <- mxx[, i]
     xx[, i] <- xx[, i] * y$sku_distribution
     xx[, i+1] <- xx[, i+1] * y$sku_distribution2
+    
   }
   
   colnames(xx) <- c("s1","s2","s3","s4","s5","s6")
@@ -322,6 +344,26 @@
   
   model3 <- lm(lm_data$share~xxx)
   summary(model3)
+  {
+    
+    #maxin effect
+    mx <- mx[,seq(1,14,by=2)]
+    head(mx)
+    colnames(mx) <- c("m1","m2","m3","m4","m5","m6","m7")
+    
+    mxx <- mxx[,seq(1,6,by=2)]
+    head(mxx)
+    colnames(mxx) <- c("ms1","ms2","ms3")
+    
+    model33 <- lm(lm_data$share~xxx+mx+mxx)
+    summary(model33)
+    
+    
+    lm_data$hhiacv <- lm_data$sku_HHI * lm_data$sku_distribution
+    lm_data$hhiacv2 <- lm_data$sku_HHI * lm_data$sku_distribution2
+    test <- lm(lm_data$share~xxx+lm_data$hhiacv + lm_data$hhiacv2+mx+mxx)
+    summary(test)
+  }
   #列的命名type size
   
   #输出结果
